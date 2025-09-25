@@ -1,0 +1,365 @@
+================================================================================
+                        IMU/GPS DATA LOGGER v2.0 - DESIGN DOCUMENT
+================================================================================
+
+1. PROJECT OVERVIEW
+--------------------------------------------------------------------------------
+Purpose: High-speed data logger for STM32 IMU/GPS system (104Hz target)
+Key Features:
+- Port connection verification
+- Real-time performance monitoring
+- Data integrity validation
+- CSV logging with memory buffering
+- Backend integration capability
+
+Target Performance:
+- Sampling Rate: 104Hz (STM32 output rate)
+- Data Loss: < 1%
+- Memory Usage: < 100MB for 10 minutes
+- CSV Write Time: < 1 second for 10 minutes data
+
+
+2. PROJECT STRUCTURE
+--------------------------------------------------------------------------------
+C:\ST\IMU_GPS_LOGGER\
+├── core/
+│   ├── __init__.py
+│   ├── connection_manager.py   # Port connection and verification
+│   ├── serial_reader.py        # Optimized serial communication
+│   ├── data_validator.py       # Data format validation
+│   ├── performance_monitor.py  # Real-time performance tracking
+│   └── csv_logger.py          # CSV file writing
+│
+├── utils/
+│   ├── __init__.py
+│   ├── port_scanner.py        # Serial port detection
+│   ├── diagnostics.py         # System diagnostics
+│   └── statistics.py          # Statistical analysis
+│
+├── config.py                   # Configuration settings
+├── main.py                     # Main application
+├── requirements.txt            # Python dependencies
+├── logs/                       # Output directory for CSV files
+└── README.md                   # Usage documentation
+
+
+3. MODULE SPECIFICATIONS
+--------------------------------------------------------------------------------
+
+3.1 CONNECTION_MANAGER.PY
+--------------------------
+Class: ConnectionManager
+Purpose: Manage serial port connection and verification
+
+Key Methods:
+- scan_ports() -> List[PortInfo]
+  * Scan all available serial ports
+  * Identify STM32 devices by VID/PID
+  * Return sorted list with STM32 priority
+
+- test_connection(port: str) -> ConnectionTestResult
+  * Stage 1: Attempt to open port
+  * Stage 2: Receive data for 3 seconds
+  * Stage 3: Validate data format
+  * Return detailed test results
+
+- verify_continuous_data() -> bool
+  * Monitor data stream for 10 seconds
+
+  * Calculate average Hz
+  * Detect data interruptions
+  * Check GPS signal presence
+
+- optimize_settings() -> None
+  * Adjust serial buffer size
+  * Optimize timeout values
+  * Configure for maximum throughput
+
+
+3.2 SERIAL_READER.PY
+---------------------
+Class: OptimizedSerialReader
+Purpose: High-speed serial data collection
+
+Key Features:
+- Non-blocking read with in_waiting
+- 65KB buffer size
+- Batch processing (multiple lines per read)
+- Incomplete line handling
+- 1ms timeout for responsiveness
+
+Key Methods:
+- connect(port, baudrate) -> bool
+- read_batch() -> List[str]
+- get_buffer_status() -> Dict
+- disconnect() -> None
+
+
+3.3 DATA_VALIDATOR.PY
+----------------------
+Class: DataValidator
+Purpose: Validate received data format and integrity
+
+Supported Formats:
+- IMU: "IMU: Acc[x,y,z] Gyro[x,y,z]"
+- GPS: "GPS: Lat[lat] Lng[lng] Status[status]"
+- DATA: "DATA: IMU[ax,ay,az,gx,gy,gz] GPS[lat,lng,status]"
+- ESKF: "ESKF: IMU[...] Pos[...] Att[...]"
+
+Key Methods:
+- validate_line(line: str) -> ValidationResult
+- check_data_integrity(buffer: List) -> IntegrityReport
+- get_format_statistics() -> FormatStats
+
+
+3.4 PERFORMANCE_MONITOR.PY
+---------------------------
+Class: PerformanceMonitor
+Purpose: Track real-time performance metrics
+
+Metrics Tracked:
+- Current sampling rate (Hz)
+- Average/Min/Max Hz
+- Packet drop count
+- Buffer overflow risk
+- Timing consistency
+
+Key Methods:
+- update(timestamp, buffer_size) -> None
+- get_current_hz() -> float
+- get_statistics() -> PerformanceStats
+- detect_anomalies() -> List[Anomaly]
+
+
+3.5 CSV_LOGGER.PY
+-----------------
+Class: CSVLogger
+Purpose: Efficient CSV file writing
+
+Features:
+- Memory buffering (no real-time I/O)
+- Dual CSV output (raw + ESKF)
+- Automatic filename generation
+- Batch writing on stop
+
+CSV Headers:
+timestamp, accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z,
+gps_available, gps_lat, gps_lng, gps_alt, satellites,
+eskf_pos_x, eskf_pos_y, eskf_pos_z, eskf_roll, eskf_pitch, eskf_yaw
+
+
+4. MAIN APPLICATION FLOW
+--------------------------------------------------------------------------------
+
+4.1 STARTUP SEQUENCE
+--------------------
+1. Initialize all modules
+2. Load configuration
+3. Create log directory if needed
+
+4.2 PORT SELECTION PHASE
+-------------------------
+[1/4] PORT DETECTION
+- Scan available ports
+- Display port list with descriptions
+- Auto-select single port
+- Manual selection for multiple ports
+
+4.3 CONNECTION TEST PHASE
+--------------------------
+[2/4] CONNECTION TEST
+- Open selected port
+- Receive data for 3 seconds
+- Validate data format
+- Calculate data rate
+- Display results
+
+4.4 DATA VALIDATION PHASE
+--------------------------
+[3/4] DATA VALIDATION
+- Monitor stream for 10 seconds
+- Show progress bar with real-time Hz
+- Calculate statistics
+- Detect performance issues
+- Apply optimizations if needed
+
+4.5 LOGGING PHASE
+-----------------
+[4/4] DATA LOGGING
+- Display control instructions
+- Real-time status display
+- Handle user commands:
+  * SPACE: Start/Stop logging
+  * S: Show statistics
+  * Q: Quit application
+
+
+5. ERROR HANDLING
+--------------------------------------------------------------------------------
+
+Connection Errors:
+- PORT_OPEN_FAILED: Port in use or doesn't exist
+- NO_DATA: No data received in timeout period
+- INVALID_FORMAT: Data doesn't match expected format
+- LOW_DATA_RATE: Hz below threshold (90Hz)
+
+Recovery Strategies:
+- Automatic reconnection attempts
+- Buffer overflow prevention
+- Data gap handling
+- Graceful degradation
+
+
+6. CONFIGURATION (config.py)
+--------------------------------------------------------------------------------
+# Serial Configuration
+SERIAL_PORT = "COM3"              # Default port (auto-detect if None)
+SERIAL_BAUDRATE = 115200         # Baud rate
+SERIAL_BUFFER_SIZE = 65536       # 65KB buffer
+SERIAL_TIMEOUT = 0.001            # 1ms timeout
+
+# Performance Settings
+TARGET_HZ = 104                   # Expected sampling rate
+MIN_ACCEPTABLE_HZ = 95            # Warning threshold
+POLLING_INTERVAL_MS = 1           # Main loop delay
+
+# Buffer Settings
+MAX_MEMORY_BUFFER = 1000000       # Max samples in memory
+BATCH_READ_SIZE = 100             # Lines per batch read
+
+# Logging Settings
+LOG_DIRECTORY = "./logs"          # Output directory
+CSV_ENCODING = "utf-8"            # File encoding
+TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S" # For filenames
+
+# Validation Settings
+CONNECTION_TEST_DURATION = 3.0    # Seconds
+VALIDATION_DURATION = 10.0        # Seconds
+MIN_PACKETS_FOR_VALIDATION = 100  # Minimum packets
+
+
+7. PERFORMANCE OPTIMIZATIONS
+--------------------------------------------------------------------------------
+
+Serial Communication:
+- Non-blocking reads (in_waiting check)
+- Batch processing (multiple lines per iteration)
+- Large buffer (65KB) to prevent overflow
+- Minimal timeout (1ms)
+
+Data Processing:
+- Memory buffering (no real-time file I/O)
+- Efficient parsing with regex compilation
+- Deque for fixed-size buffers
+- NumPy for statistical calculations
+
+CSV Writing:
+- Bulk write with csv.writerows()
+- Write only on logging stop
+- Separate thread for file operations (future)
+
+
+8. BACKEND INTEGRATION PLAN
+--------------------------------------------------------------------------------
+
+Phase 1: Standalone Testing
+- Develop and test all modules independently
+- Verify 104Hz achievement
+- Validate CSV output
+
+Phase 2: Module Export
+- Create backend-compatible interfaces
+- Package as importable modules
+- Maintain backward compatibility
+
+Phase 3: Backend Integration
+from imu_gps_logger.core import (
+    OptimizedSerialReader,
+    DataValidator,
+    PerformanceMonitor,
+    CSVLogger
+)
+
+Phase 4: Gradual Migration
+- Feature flag for new/old implementation
+- A/B testing capability
+- Performance comparison
+
+
+9. TESTING STRATEGY
+--------------------------------------------------------------------------------
+
+Unit Tests:
+- Each module independently
+- Mock serial data for testing
+- Edge cases and error conditions
+
+Integration Tests:
+- Full pipeline testing
+- Performance benchmarks
+- Data integrity verification
+
+Validation Metrics:
+- Actual Hz vs Target Hz
+- Packet loss rate
+- CPU/Memory usage
+- File size and write time
+
+
+10. EXPECTED OUTPUT
+--------------------------------------------------------------------------------
+
+Console Output Example:
+============================================================
+IMU/GPS DATA LOGGER v2.0
+============================================================
+
+[1/4] PORT DETECTION
+----------------------------------------
+Found 3 port(s):
+  [1] COM3: STM32 Virtual COM Port
+  [2] COM5: USB Serial Device
+  [3] COM7: Bluetooth Serial Port
+
+Auto-selected: COM3
+
+[2/4] CONNECTION TEST
+----------------------------------------
+Testing connection (3 seconds)...
+Connection successful!
+  Data rate: 103.7 Hz
+  IMU data: OK
+  GPS data: OK
+
+[3/4] DATA VALIDATION
+----------------------------------------
+Validating data stream (10 seconds)...
+[##########] 104.2 Hz, 1042 packets
+
+Data validation complete!
+  Average: 104.1 Hz
+  Min/Max: 103.5/104.8 Hz
+  Dropped: 0 packets
+
+[4/4] DATA LOGGING
+----------------------------------------
+All systems ready!
+
+Commands:
+  [SPACE] - Start/Stop logging
+  [S]     - Show statistics
+  [Q]     - Quit
+
+============================================================
+RECORDING | 104.1 Hz | 5234 samples | 50.3s
+
+
+CSV Output:
+- Filename: logs/20250118_143025_raw_imu_gps_data.csv
+- Format: Standard CSV with headers
+- Content: All sensor data at full 104Hz rate
+
+
+================================================================================
+END OF DESIGN DOCUMENT
+================================================================================
