@@ -228,17 +228,17 @@ class IMUGPSLogger:
                         if validation.is_valid:
                             self.valid_lines += 1
 
-                    # Process batch with distributed timestamps
+                    # Process batch with distributed timestamps (IMU + ESKF)
                     self.csv_logger.add_batch_lines(batch, batch_timestamp)
-
-                    # Process ESKF data separately (DISABLED - IMU/GPS only mode)
-                    # for line in batch:
-                    #     if line.startswith("ESKF:"):
-                    #         # ESKF gets its own timestamp
-                    #         self.csv_logger.add_eskf_line(line, datetime.now())
 
                     # Update performance monitor
                     self.performance_monitor.record_sample(len(batch))
+
+                    # Update GPS status in performance monitor
+                    self.performance_monitor.update_gps_status(
+                        self.csv_logger.gps_connection_status,
+                        self.csv_logger.current_satellite_count
+                    )
 
                 # Display live status
                 current_time = time.time()
@@ -315,10 +315,10 @@ class IMUGPSLogger:
             if csv_stats['raw_file']:
                 print(f"  Raw: {os.path.basename(csv_stats['raw_file'])}")
                 print(f"       {csv_stats['raw_samples']} samples, {csv_stats['raw_file_size']/1024:.1f} KB")
-            # ESKF output disabled - IMU/GPS only mode
-            # if csv_stats['eskf_file'] and csv_stats['eskf_samples'] > 0:
-            #     print(f"  ESKF: {os.path.basename(csv_stats['eskf_file'])}")
-            #     print(f"        {csv_stats['eskf_samples']} samples, {csv_stats['eskf_file_size']/1024:.1f} KB")
+            # ESKF output enabled - Show ESKF file statistics
+            if csv_stats['eskf_file'] and csv_stats['eskf_samples'] > 0:
+                print(f"  ESKF: {os.path.basename(csv_stats['eskf_file'])}")
+                print(f"        {csv_stats['eskf_samples']} samples, {csv_stats['eskf_file_size']/1024:.1f} KB")
 
         # Show performance summary
         if self.performance_monitor:
@@ -402,16 +402,17 @@ class IMUGPSLogger:
                     for line in batch:
                         validation = self.data_validator.validate_line(line)
 
-                    # Process batch with distributed timestamps
+                    # Process batch with distributed timestamps (IMU + ESKF)
                     self.csv_logger.add_batch_lines(batch, batch_timestamp)
-
-                    # Process ESKF data (DISABLED - IMU/GPS only mode)
-                    # for line in batch:
-                    #     if line.startswith("ESKF:"):
-                    #         self.csv_logger.add_eskf_line(line, datetime.now())
 
                     # Update performance
                     self.performance_monitor.record_sample(len(batch))
+
+                    # Update GPS status in performance monitor
+                    self.performance_monitor.update_gps_status(
+                        self.csv_logger.gps_connection_status,
+                        self.csv_logger.current_satellite_count
+                    )
 
                 # Display status
                 current_time = time.time()

@@ -1,6 +1,6 @@
 """
 Data Validator - Validate and parse data from STM32
-Supports multiple data streams: IMU, GPS, DATA, ESKF
+Supports multiple data streams: IMU, GPS, ESKF
 """
 
 import re
@@ -15,7 +15,7 @@ import config
 class ValidationResult:
     """Result of data validation"""
     is_valid: bool
-    stream_type: str  # IMU, GPS, DATA, ESKF, GPS_RAW, UNKNOWN
+    stream_type: str  # IMU, GPS, ESKF, GPS_RAW, UNKNOWN
     data: Optional[Dict]
     error: Optional[str]
 
@@ -39,7 +39,6 @@ class DataValidator:
         self.patterns = {
             'IMU': re.compile(config.IMU_PATTERN),
             'GPS': re.compile(config.GPS_PATTERN),
-            'DATA': re.compile(config.DATA_PATTERN),
             'ESKF': re.compile(config.ESKF_PATTERN),
             'GPS_RAW': re.compile(r'GPS_RAW: (.+)'),
             'GPS_BYPASS': re.compile(r'GPS_BYPASS: (.+)')
@@ -56,7 +55,6 @@ class DataValidator:
         self.stream_counts = {
             'IMU': 0,
             'GPS': 0,
-            'DATA': 0,
             'ESKF': 0,
             'GPS_RAW': 0,
             'UNKNOWN': 0
@@ -90,22 +88,10 @@ class DataValidator:
         line = line.strip()
 
         # Try to match each pattern
-        # Priority: DATA > IMU > GPS > ESKF > GPS_RAW
-
-        # DATA stream (contains both IMU and GPS)
-        if line.startswith("DATA:"):
-            result = self._validate_data_stream(line)
-            if result.is_valid:
-                self.valid_lines += 1
-                self.stream_counts['DATA'] += 1
-            else:
-                self.invalid_lines += 1
-                self.error_types['format_error'] += 1
-                self.format_errors.append(f"DATA format error: {line[:50]}...")
-            return result
+        # Priority: IMU > GPS > ESKF > GPS_RAW
 
         # IMU stream
-        elif line.startswith("IMU:") and "ESKF:" not in line:
+        if line.startswith("IMU:") and "ESKF:" not in line:
             result = self._validate_imu_stream(line)
             if result.is_valid:
                 self.valid_lines += 1
@@ -152,39 +138,6 @@ class DataValidator:
             self.stream_counts['UNKNOWN'] += 1
             return ValidationResult(False, 'UNKNOWN', None, f'Unknown format: {line[:30]}')
 
-    def _validate_data_stream(self, line: str) -> ValidationResult:
-        """Validate DATA stream format"""
-        match = self.patterns['DATA'].match(line)
-        if not match:
-            return ValidationResult(False, 'DATA', None, 'Format mismatch')
-
-        try:
-            data = {
-                'accelerometer': {
-                    'x': float(match.group(1)),
-                    'y': float(match.group(2)),
-                    'z': float(match.group(3))
-                },
-                'gyroscope': {
-                    'x': float(match.group(4)),
-                    'y': float(match.group(5)),
-                    'z': float(match.group(6))
-                },
-                'gps': {
-                    'latitude': float(match.group(7)),
-                    'longitude': float(match.group(8)),
-                    'available': int(match.group(9)) == 1
-                }
-            }
-
-            # Validate ranges
-            if not self._validate_imu_ranges(data['accelerometer'], data['gyroscope']):
-                return ValidationResult(False, 'DATA', None, 'IMU values out of range')
-
-            return ValidationResult(True, 'DATA', data, None)
-
-        except (ValueError, IndexError) as e:
-            return ValidationResult(False, 'DATA', None, f'Parse error: {e}')
 
     def _validate_imu_stream(self, line: str) -> ValidationResult:
         """Validate IMU stream format"""

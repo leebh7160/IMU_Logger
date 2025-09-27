@@ -103,7 +103,6 @@ Purpose: Validate received data format and integrity
 Supported Formats:
 - IMU: "IMU: Acc[x,y,z] Gyro[x,y,z]"
 - GPS: "GPS: Lat[lat] Lng[lng] Status[status]"
-- DATA: "DATA: IMU[ax,ay,az,gx,gy,gz] GPS[lat,lng,status]"
 - ESKF: "ESKF: IMU[...] Pos[...] Att[...]"
 
 Key Methods:

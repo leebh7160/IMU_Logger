@@ -24,6 +24,8 @@ class PerformanceMetrics:
     samples_per_second: List[int]
     data_drops: int
     uptime_seconds: float
+    gps_status: str
+    satellite_count: int
 
 class PerformanceMonitor:
     """Monitor and analyze system performance"""
@@ -52,6 +54,10 @@ class PerformanceMonitor:
 
         # Process monitoring
         self.process = psutil.Process(os.getpid())
+
+        # GPS status tracking
+        self.gps_status = "UNKNOWN"
+        self.satellite_count = 0
 
     def start_monitoring(self) -> None:
         """Start performance monitoring"""
@@ -96,6 +102,25 @@ class PerformanceMonitor:
         """
         self.data_drops += count
 
+    def update_gps_status(self, gps_connected: bool, satellite_count: int) -> None:
+        """Update GPS status information
+
+        Args:
+            gps_connected: GPS connection status
+            satellite_count: Number of satellites
+        """
+        if gps_connected:
+            if satellite_count >= 4:
+                self.gps_status = "FIXED"
+            elif satellite_count > 0:
+                self.gps_status = "SEARCHING"
+            else:
+                self.gps_status = "NO_SATS"
+        else:
+            self.gps_status = "DISCONNECTED"
+
+        self.satellite_count = satellite_count
+
     def get_metrics(self) -> PerformanceMetrics:
         """Get current performance metrics
 
@@ -109,7 +134,8 @@ class PerformanceMonitor:
                 current_hz=0, average_hz=0, peak_hz=0, min_hz=0,
                 buffer_usage=0, memory_mb=0, cpu_percent=0,
                 samples_total=0, samples_per_second=[],
-                data_drops=0, uptime_seconds=0
+                data_drops=0, uptime_seconds=0,
+                gps_status="UNKNOWN", satellite_count=0
             )
 
         uptime = current_time - self.start_time
@@ -146,7 +172,9 @@ class PerformanceMonitor:
             samples_total=self.total_samples,
             samples_per_second=list(self.samples_per_second),
             data_drops=self.data_drops,
-            uptime_seconds=uptime
+            uptime_seconds=uptime,
+            gps_status=self.gps_status,
+            satellite_count=self.satellite_count
         )
 
     def check_performance(self) -> Dict[str, str]:
@@ -234,6 +262,6 @@ class PerformanceMonitor:
         return (f"[{metrics.uptime_seconds:6.1f}s] "
                 f"Rate: {metrics.current_hz:6.1f} Hz (avg: {metrics.average_hz:6.1f}) | "
                 f"Samples: {metrics.samples_total:6d} | "
-                f"Drops: {metrics.data_drops:3d} | "
                 f"Mem: {metrics.memory_mb:5.1f} MB | "
+                f"GPS: {metrics.gps_status} ({metrics.satellite_count} sats) | "
                 f"Status: {rate_status}")

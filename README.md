@@ -75,10 +75,6 @@ IMU: Acc[x,y,z] Gyro[x,y,z]
 GPS: Lat[위도] Lng[경도] Status[VALID/SEARCHING]
 ```
 
-### 통합 데이터
-```
-DATA: IMU[ax,ay,az,gx,gy,gz] GPS[lat,lng,status]
-```
 
 ## 테스트 실행
 각 모듈을 개별적으로 테스트할 수 있습니다:

@@ -33,5 +33,4 @@ MIN_PACKETS_FOR_VALIDATION = 100  # Minimum packets needed for valid test
 # Data Format Patterns (for validation)
 IMU_PATTERN = r"IMU: Acc\[([-\d.]+),([-\d.]+),([-\d.]+)\] Gyro\[([-\d.]+),([-\d.]+),([-\d.]+)\]"
 GPS_PATTERN = r"GPS: Lat\[([-\d.]+)\] Lng\[([-\d.]+)\] .*Status\[(VALID|SEARCHING)\]"
-DATA_PATTERN = r"DATA: IMU\[([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+)\] GPS\[([-\d.]+),([-\d.]+),(\d)\]"
-ESKF_PATTERN = r"ESKF: IMU\[.*\] Pos\[.*\] Att\[.*\]"
+ESKF_PATTERN = r"ESKF: Pos\[([-\d.]+),([-\d.]+),([-\d.]+)\] Vel\[([-\d.]+),([-\d.]+),([-\d.]+)\] Att\[([-\d.]+),([-\d.]+),([-\d.]+)\]"

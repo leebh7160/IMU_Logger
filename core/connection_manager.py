@@ -171,8 +171,6 @@ class ConnectionManager:
         for line in lines:
             if re.match(config.IMU_PATTERN, line):
                 return True
-            if re.match(config.DATA_PATTERN, line):
-                return True
             # ESKF pattern check disabled - IMU/GPS only mode
             # if re.match(config.ESKF_PATTERN, line):
             #     return True
@@ -182,8 +180,6 @@ class ConnectionManager:
         """Check if GPS data format is present"""
         for line in lines:
             if re.match(config.GPS_PATTERN, line):
-                return True
-            if re.match(config.DATA_PATTERN, line):
                 return True
         return False
 

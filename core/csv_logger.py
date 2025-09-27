@@ -48,12 +48,16 @@ class CSVLogger:
             'satellites'
         ]
 
-        # ESKF additional headers (for eskf CSV file) - DISABLED
-        # self.eskf_headers = self.headers + [
-        #     'eskf_pos_x', 'eskf_pos_y', 'eskf_pos_z',
-        #     'eskf_vel_x', 'eskf_vel_y', 'eskf_vel_z',
-        #     'eskf_roll', 'eskf_pitch', 'eskf_yaw'
-        # ]
+        # ESKF headers (16-column format, identical to IMU headers) - ENABLED
+        self.eskf_headers = [
+            'timestamp',                        # Same as IMU
+            'accel_x', 'accel_y', 'accel_z',   # ESKF Position (mapped to accel columns)
+            'gyro_x', 'gyro_y', 'gyro_z',      # ESKF Velocity (mapped to gyro columns)
+            'utc_time',                         # Same GPS data as IMU
+            'gps_available', 'gps_lat', 'gps_lng', 'gps_alt',  # Same GPS data as IMU
+            'speed_kmh', 'heading', 'nav_status',               # Same GPS data as IMU
+            'satellites'                        # Same GPS data as IMU
+        ]
 
         # GPS tracking (no longer needed for CSV, but kept for internal logic)
         self.last_valid_gps = {
@@ -129,43 +133,8 @@ class CSVLogger:
         if not timestamp:
             timestamp = datetime.now()
 
-        # Parse DATA stream (priority - contains both IMU and GPS)
-        if line.startswith("DATA:"):
-            match = re.match(r'DATA: IMU\[([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+)\] GPS\[([-\d.]+),([-\d.]+),(\d)\]', line)
-            if match:
-                gps_lat = float(match.group(7))
-                gps_lng = float(match.group(8))
-                gps_status = int(match.group(9))
-
-                # Update last valid GPS if available
-                if gps_status == 1 and (gps_lat != 0 or gps_lng != 0):
-                    self.last_valid_gps['lat'] = gps_lat
-                    self.last_valid_gps['lng'] = gps_lng
-
-                # Build row - enhanced 16-field format
-                row = [
-                    timestamp.isoformat(),
-                    float(match.group(1)),  # accel_x
-                    float(match.group(2)),  # accel_y
-                    float(match.group(3)),  # accel_z
-                    float(match.group(4)),  # gyro_x
-                    float(match.group(5)),  # gyro_y
-                    float(match.group(6)),  # gyro_z
-                    self.utc_time,          # utc_time from NMEA
-                    gps_status == 1,        # gps_available (True/False)
-                    gps_lat if gps_lat != 0 else '',  # gps_lat
-                    gps_lng if gps_lng != 0 else '',  # gps_lng
-                    self.gps_altitude,      # gps_alt from NMEA
-                    self.gps_speed_kmh,     # speed_kmh from GPS stream
-                    self.gps_heading,       # heading from NMEA
-                    self.nav_status,        # nav_status from GPS stream
-                    self.current_satellite_count  # satellites from NMEA
-                ]
-                self.raw_buffer.append(row)
-                self.total_samples += 1
-
         # Parse IMU-only stream
-        elif line.startswith("IMU:") and "ESKF:" not in line:
+        if line.startswith("IMU:") and "ESKF:" not in line:
             match = re.match(r'IMU: Acc\[([-\d.]+),([-\d.]+),([-\d.]+)\] Gyro\[([-\d.]+),([-\d.]+),([-\d.]+)\]', line)
             if match:
                 row = [
@@ -227,36 +196,35 @@ class CSVLogger:
             timestamp = datetime.now()
 
         if line.startswith("ESKF:"):
-            # Parse ESKF format: ESKF: IMU[...] Pos[x,y,z] Att[roll,pitch,yaw]
-            match = re.match(
-                r'ESKF: IMU\[([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+)\] '
-                r'Pos\[([-\d.]+),([-\d.]+),([-\d.]+)\] '
-                r'Att\[([-\d.]+),([-\d.]+),([-\d.]+)\]',
-                line
-            )
+            # Parse NEW ESKF format: ESKF: Pos[x,y,z] Vel[x,y,z] Att[roll,pitch,yaw]
+            match = re.match(config.ESKF_PATTERN, line)
             if match:
-                # Check if we have valid GPS
-                gps_available = self.last_valid_gps['lat'] != 0 or self.last_valid_gps['lng'] != 0
+                # Extract ESKF data: Position, Velocity, Attitude
+                pos_x, pos_y, pos_z = float(match.group(1)), float(match.group(2)), float(match.group(3))
+                vel_x, vel_y, vel_z = float(match.group(4)), float(match.group(5)), float(match.group(6))
+                roll, pitch, yaw = float(match.group(7)), float(match.group(8)), float(match.group(9))
 
-                # ESKF functionality is disabled in current version
-                # Build row with enhanced 16-field format
+                # Use same GPS state as IMU CSV for consistency
+                current_gps_available = self.gps_connection_status if hasattr(self, 'gps_connection_status') else False
+                current_gps_lat = self.current_gps_status.get('lat', '') if (hasattr(self, 'current_gps_status') and self.gps_just_updated) else ''
+                current_gps_lng = self.current_gps_status.get('lng', '') if (hasattr(self, 'current_gps_status') and self.gps_just_updated) else ''
+                current_gps_alt = self.current_gps_status.get('alt', 0.0) if (hasattr(self, 'current_gps_status') and self.gps_just_updated) else 0.0
+                current_satellites = getattr(self, 'current_satellite_count', 0)
+
+                # Build ESKF row with 16 columns (same structure as IMU)
                 row = [
-                    timestamp.isoformat(),
-                    float(match.group(1)),  # accel_x
-                    float(match.group(2)),  # accel_y
-                    float(match.group(3)),  # accel_z
-                    float(match.group(4)),  # gyro_x
-                    float(match.group(5)),  # gyro_y
-                    float(match.group(6)),  # gyro_z
-                    self.utc_time,          # utc_time from NMEA
-                    gps_available,          # gps_available (True/False)
-                    self.last_valid_gps['lat'] if gps_available else '',  # gps_lat
-                    self.last_valid_gps['lng'] if gps_available else '',  # gps_lng
-                    self.gps_altitude,      # gps_alt from NMEA
-                    self.gps_speed_kmh,     # speed_kmh
-                    self.gps_heading,       # heading from NMEA
-                    self.nav_status,        # nav_status
-                    self.current_satellite_count  # satellites from NMEA
+                    timestamp.isoformat(),  # timestamp
+                    pos_x, pos_y, pos_z,    # Position → accel_x,y,z columns
+                    vel_x, vel_y, vel_z,    # Velocity → gyro_x,y,z columns
+                    getattr(self, 'utc_time', ''),           # utc_time (same GPS data)
+                    current_gps_available,                   # gps_available
+                    current_gps_lat,                        # gps_lat
+                    current_gps_lng,                        # gps_lng
+                    current_gps_alt,                        # gps_alt
+                    getattr(self, 'gps_speed_kmh', 0.0),    # speed_kmh (same GPS data)
+                    getattr(self, 'gps_heading', 0.0),      # heading (same GPS data)
+                    getattr(self, 'nav_status', ''),        # nav_status (same GPS data)
+                    current_satellites                       # satellites
                 ]
                 self.eskf_buffer.append(row)
 
@@ -272,9 +240,10 @@ class CSVLogger:
         # Save raw data
         raw_saved = self._save_csv(self.raw_filename, self.headers, self.raw_buffer)
 
-        # Save ESKF data (DISABLED - IMU/GPS only mode)
+        # Save ESKF data (ENABLED - Full IMU/GPS/ESKF mode)
         eskf_saved = False
-        # eskf_saved = self._save_csv(self.eskf_filename, self.eskf_headers, self.eskf_buffer)
+        if len(self.eskf_buffer) > 0:
+            eskf_saved = self._save_csv(self.eskf_filename, self.eskf_headers, self.eskf_buffer)
 
         # Calculate statistics
         stats = {
@@ -371,6 +340,19 @@ class CSVLogger:
             timestamp = self.first_batch_timestamp + (interval * self.global_sample_counter)
             self._process_line(line, timestamp)
             self.global_sample_counter += 1
+
+        # Third pass: Process ESKF lines with globally continuous timestamps (same as IMU)
+        eskf_lines = [line for line in lines if line.startswith("ESKF:")]
+
+        # Initialize ESKF timing if not exists
+        if not hasattr(self, 'eskf_sample_counter'):
+            self.eskf_sample_counter = 0
+
+        for line in eskf_lines:
+            # Calculate globally continuous timestamp for ESKF (104Hz uniform spacing like IMU)
+            timestamp = self.first_batch_timestamp + (interval * self.eskf_sample_counter)
+            self.add_eskf_line(line, timestamp)
+            self.eskf_sample_counter += 1
 
         # Ignore DATA stream to prevent duplication
         # DATA stream processing is disabled to avoid duplicate IMU data
@@ -474,9 +456,6 @@ class CSVLogger:
         elif line.startswith("$CSIDR"):
             self._parse_csidr_message(line)
 
-        # DATA stream - IGNORE (to prevent duplication)
-        # if line.startswith("DATA:"):
-        #     pass  # Ignore DATA stream to prevent duplication with IMU stream
 
     def _parse_gngga_satellites(self, nmea_message: str) -> None:
         """Parse GNGGA NMEA message to extract satellite count and altitude
